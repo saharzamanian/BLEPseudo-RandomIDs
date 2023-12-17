@@ -113,15 +113,7 @@ void controlPeripheral() {
     ephemeralID.getBytes(collectedData[count], NUM_HASH_BYTES*2 + 1);
     ephemeralCharacteristic.writeValue(collectedData[count], NUM_HASH_BYTES*2);
     delay(1000);
-    count++;
-    if (count == 9)
-      break;
   }
-
-  for (int i = 0; i < 10; ++i) {
-    Serial.println(String((char *) collectedData[i]));
-  }
-  while(1);
   
   Serial.println("Peripheral - receiver device disconnected!");
 }

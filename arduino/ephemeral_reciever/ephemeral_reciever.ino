@@ -5,7 +5,7 @@
 #include "net.h" // network weights
 
 #define N_INPUTS 64
-#define N_OUTPUTS 7
+#define N_OUTPUTS 4
 #define TENSOR_ARENA_SIZE 30 * 1024
 
 Eloquent::TinyML::TensorFlow::TensorFlow<N_INPUTS, N_OUTPUTS, TENSOR_ARENA_SIZE> tf;
@@ -62,6 +62,7 @@ void loop() {
          ephemeralCharacteristic.readValue(values, 64);
          Serial.println("received: " + String((char *)values));
          run_cnn();
+         delay(2000);
        }
     }
     
@@ -72,23 +73,34 @@ void loop() {
 }
 
 
+float my_test[64];
+float my_pred[7] = {0};
+
 void run_cnn() {
-    float my_test[64];
-    float my_pred[7] = {0};
-
-    char aa[2] = {0, 0};
-
-    for (int i = 0; i < 64; ++i) {
-        aa[0] = values[i];
-        Serial.print(strtol(aa, 0, 16));
-    }
-
+    to_float_array();
+    print_float_array();
+    
     //uint32_t start = micros();
     tf.predict(my_test, my_pred);
     //uint32_t timeit = micros() - start;
     Serial.println(tf.probaToClass(my_pred));
+}
 
-    
-    
-    delay(2000);
+
+void to_float_array() {
+    char hex_num[2] = {0, 0};
+
+    for (int i = 0; i < 64; ++i) {
+        hex_num[0] = values[i];
+        my_test[i] = strtol(hex_num, 0, 16);
+    }
+}
+
+
+void print_float_array() {
+    for (int i = 0; i < 64; ++i) {
+        Serial.print(String(my_test[i]));
+        Serial.print(" ");
+    }
+    Serial.println("");    
 }
