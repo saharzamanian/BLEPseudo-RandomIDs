@@ -1,7 +1,6 @@
 #include <Crypto.h>
 #include <SHA256.h>
 #include <ArduinoBLE.h>
-#include <Arduino_CRC32.h>
 
 #define NUM_HASH_BYTES 32
 
@@ -10,7 +9,7 @@ const char* deviceServiceCharacteristicUuid = "19b10001-e8f2-537e-4f6c-d104768a1
 
 BLEDevice peripheral;
 
-String deviceSeed = "Device1";
+String deviceSeed = "Device0";
 
 
 void setup() {
@@ -43,19 +42,8 @@ void setupBLE() {
 
 
 void loop() {
-  //connectToPeripheral();
-  //controlPeripheral();
-
-  delay(5000);
-  Serial.println("Started");
-
-  for (int i = 0; i < 10; ++i) {
-    String ephemeralID = generateEphemeralIDSha256(deviceSeed);
-    Serial.println(ephemeralID);
-    delay(1000);
-  }
-  while(1);
-
+  connectToPeripheral();
+  controlPeripheral();
 }
 
 
@@ -136,19 +124,6 @@ void controlPeripheral() {
   while(1);
   
   Serial.println("Peripheral - receiver device disconnected!");
-}
-
-
-String generateEphemeralIDCRC() {
-  int randomValue = random(0, 1000);
-  unsigned long timestamp = millis();
-  String combinedData = String(randomValue) + String(timestamp);
-
-  Arduino_CRC32 crc32;
-  uint32_t hashedID = crc32.calc((uint8_t const*)combinedData.c_str(), combinedData.length());
-  String ephemeralID = String(hashedID, HEX);
-  
-  return ephemeralID;
 }
 
 
