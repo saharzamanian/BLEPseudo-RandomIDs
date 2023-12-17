@@ -62,7 +62,7 @@ void loop() {
          ephemeralCharacteristic.readValue(values, 64);
          Serial.println("received: " + String((char *)values));
          run_cnn();
-         delay(2000);
+         //delay(2000);
        }
     }
     

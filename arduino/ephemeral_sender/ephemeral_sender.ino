@@ -9,14 +9,20 @@ const char* deviceServiceCharacteristicUuid = "19b10001-e8f2-537e-4f6c-d104768a1
 
 BLEDevice peripheral;
 
-String deviceSeed = "Device0";
+const int NUM_DEVICES = 4;
+
+const int NUM_TRAINING_DATA = 1000;
+
+byte labels[NUM_TRAINING_DATA];
+
+String deviceSeeds[NUM_DEVICES] = {"Device0", "Device1", "Device2", "Device3"};
 
 
 void setup() {
   Serial.begin(9600);
   while (!Serial);
   
-  unsigned long seed = 1;
+  unsigned long seed = 2;
   randomSeed(seed);
 
   startBLE();
@@ -42,8 +48,34 @@ void setupBLE() {
 
 
 void loop() {
-  connectToPeripheral();
-  controlPeripheral();
+  bool is_generating_training_data = true;
+
+  if (is_generating_training_data) {
+    generateTrainingData();
+    printLabels();
+    while (true);
+  } else {
+    connectToPeripheral();
+    controlPeripheral();
+  }
+}
+
+
+void generateTrainingData() {
+  for (int i = 0; i < NUM_TRAINING_DATA; ++i) {
+    int randomValue = random(0, 4);
+    labels[i] = randomValue;
+    String deviceSeed = deviceSeeds[randomValue];
+    String ephemeralID = generateEphemeralIDSha256(deviceSeed);
+    Serial.println(ephemeralID);
+  }
+}
+
+
+void printLabels() {
+  for (int i = 0; i < NUM_TRAINING_DATA; ++i) {
+    Serial.println(labels[i]);
+  }
 }
 
 
@@ -105,7 +137,7 @@ void controlPeripheral() {
   int count = 0;
 
   while (peripheral.connected()) {
-    String ephemeralID = generateEphemeralIDSha256(deviceSeed);
+    String ephemeralID = generateEphemeralIDSha256(deviceSeeds[0]);
     Serial.print("Sent: ");
     Serial.println(ephemeralID);
     Serial.println(" ");
@@ -123,7 +155,6 @@ String generateEphemeralIDSha256(String seed) {
   unsigned long timestamp = millis();
   String combinedData = seed + String(timestamp);  
   String ephemeralID = calculateSHA256(combinedData);
-  Serial.println(combinedData);
   return ephemeralID;
 }
 
