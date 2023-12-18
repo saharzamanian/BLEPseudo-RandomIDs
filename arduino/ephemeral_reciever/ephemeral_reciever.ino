@@ -62,6 +62,7 @@ void loop() {
          ephemeralCharacteristic.readValue(values, 64);
          Serial.println("received: " + String((char *)values));
          run_cnn();
+         Serial.println("");
          //delay(2000);
        }
     }
@@ -78,11 +79,12 @@ float my_pred[7] = {0};
 
 void run_cnn() {
     to_float_array();
-    print_float_array();
+    //print_float_array();
     
     //uint32_t start = micros();
     tf.predict(my_test, my_pred);
     //uint32_t timeit = micros() - start;
+    Serial.print("Predicted label is: ");
     Serial.println(tf.probaToClass(my_pred));
 }
 

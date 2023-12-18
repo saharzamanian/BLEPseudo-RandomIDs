@@ -48,7 +48,7 @@ void setupBLE() {
 
 
 void loop() {
-  bool is_generating_training_data = true;
+  bool is_generating_training_data = false;
 
   if (is_generating_training_data) {
     generateTrainingData();
