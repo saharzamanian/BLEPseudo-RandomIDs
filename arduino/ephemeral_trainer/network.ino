@@ -1,27 +1,19 @@
-// https://github.com/niil87/Machine-Learning-for-IOT---Fall-2022-Batch-Lund-University/blob/main/Math_for_Understanding_Deep_Neural_Networks.pdf
+#include "network.h"
+#include "data.h"
 
 
 #define fRAND ( rand()*1.0/RAND_MAX-0.5 )*2   // random number generator between -1 and +1 
 #define ACT(a) max(a,0)    // RELU(a)
 
-
 #define LEARNING_RATE 0.1
-#define DATA_TYPE_FlOAT
 
-#ifdef DATA_TYPE_FLOAT 
-  #define DATA_TYPE float
-  #define EXP_LIMIT 78.0  // limit 88.xx but we need to factor in accumulation for softmax
-  #define EXP(a) expl(a)
-#else
-  #define DATA_TYPE double
-  #define EXP_LIMIT 699.0 // limit is 709.xx but we need to factor in accumulation for softmax
-  #define EXP(a) exp(a)
-#endif
+#define EXP_LIMIT 78.0  // limit 88.xx but we need to factor in accumulation for softmax
+#define EXP(a) expl(a)
 
 
 extern const size_t NUM_INPUT_DATA_ELEMENTS;
 const size_t NUM_1ST_LAYER_NEURONS = NUM_INPUT_DATA_ELEMENTS;
-const size_t NUM_2ND_LAYER_NEURONS = 20;
+const size_t NUM_2ND_LAYER_NEURONS = 30;
 const size_t NUM_OUTPUT_NEURONS = 3;
 
 static const unsigned int NN_def[] = {NUM_1ST_LAYER_NEURONS, NUM_2ND_LAYER_NEURONS, NUM_OUTPUT_NEURONS};
@@ -29,44 +21,69 @@ static const unsigned int NN_def[] = {NUM_1ST_LAYER_NEURONS, NUM_2ND_LAYER_NEURO
 size_t numLayers = sizeof(NN_def) / sizeof(NN_def[0]);
 
 // dummy input for testing
-DATA_TYPE input[NUM_1ST_LAYER_NEURONS];
+float input[NUM_1ST_LAYER_NEURONS];
 
 // dummy output for testing
-DATA_TYPE hat_y[NUM_OUTPUT_NEURONS];    // target output
-DATA_TYPE y[NUM_OUTPUT_NEURONS];        // output after forward propagation
-
+float hat_y[NUM_OUTPUT_NEURONS];    // target output
+float y[NUM_OUTPUT_NEURONS];        // output after forward propagation
 
 // creating array index to randomnize order of training data
 int indxArray[NUM_TRAINING_DATA];
 
-// Convention: Refer to 
-typedef struct neuron_t {
-	int numInput;
-	DATA_TYPE* W;
-	DATA_TYPE B;
-	DATA_TYPE X;
-
-	// For back propagation, convention, dA means dL/dA or partial derivative of Loss over Accumulative output
-	DATA_TYPE* dW;
-	DATA_TYPE dA;
-	DATA_TYPE dB;
-
-} neuron;
-
-typedef struct layer_t {
-	int numNeuron;
-	neuron* Neu;
-} layer;
-
 // initializing the layer as global parameter
-layer* L = NULL;
+Layer* L = NULL;
 
 // Weights written to here will be sent/received via bluetooth. 
-DATA_TYPE* WeightBiasPtr = NULL;
+float* WeightBiasPtr = NULL;
+
+
+void initNN() {
+  int weights_bias_cnt = calcTotalWeightsBias(); 
+
+  Serial.print("The total number of weights and bias used for on-device training on Arduino: ");
+  Serial.println(weights_bias_cnt);
+
+  // Allocate common weight vector, and pass to setupNN, setupBLE
+  float* WeightBiasPtr = (float*) calloc(weights_bias_cnt, sizeof(float));
+
+  setupNN(WeightBiasPtr);  // CREATES THE NETWORK BASED ON NN_def[]
+}
+
+
+#define PRINT_WEIGTHS 0
+
+void train() {
+  Serial.println("Start training");
+
+#if PRINT_WEIGTHS      
+  Serial.println("Now Training");
+  PRINT_WEIGHTS();
+#endif
+
+  static int epoch_count = 0;
+  Serial.print("Epoch count (training count): ");
+  Serial.print(++epoch_count);
+  Serial.println();
+
+  // reordering the index for more randomness and faster learning
+  shuffleIndx();
+  
+  // starting forward + Backward propagation
+  for (int j = 0; j < NUM_TRAINING_DATA; j++) {
+    generateTrainVectors(j);  
+    forwardProp();
+    backwardProp();
+  }
+
+  Serial.println("Accuracy after local training:");
+  printAccuracy();
+
+}
+
 
 // Equation (8)
-DATA_TYPE AccFunction (unsigned int layerIndx, int nodeIndx) {
-	DATA_TYPE A = 0;
+float AccFunction (unsigned int layerIndx, int nodeIndx) {
+	float A = 0;
 
 	for (int k = 0; k < NN_def[layerIndx - 1]; k++) {
 
@@ -92,14 +109,14 @@ DATA_TYPE AccFunction (unsigned int layerIndx, int nodeIndx) {
 
 // NEED HANDLING TO ENSURE NO WEIGHTS AND BIAS ARE CREATED FOR FIRST LAYER OR THROW ERROR IF ACCESSED ACCIDENTLY
 // EVEN THOUGH WE HAVENT EXPLICITLY CALLED CREATED THE NEURON FOR FIRST LAYER, HOW WAS L[i].Neu[j].X SUCCESSFUL IN FORWARD PROPAGATION!!
-neuron createNeuron(int numInput) {
+Neuron createNeuron(int numInput) {
 
-	neuron N1;
+	Neuron N1;
 
 	N1.B = fRAND;
 	N1.numInput = numInput;
-	N1.W = (DATA_TYPE*)calloc(numInput, sizeof(DATA_TYPE));
-	N1.dW = (DATA_TYPE*)calloc(numInput, sizeof(DATA_TYPE));
+	N1.W = (float*)calloc(numInput, sizeof(float));
+	N1.dW = (float*)calloc(numInput, sizeof(float));
 	// initializing values of W to rand and dW to 0
 	//int Sum = 0;
 	for (int i = 0; i < numInput; i++) {
@@ -113,16 +130,18 @@ neuron createNeuron(int numInput) {
 
 }
 
-layer createLayer (int numNeuron) {
-	layer L1;
+
+Layer createLayer (int numNeuron) {
+	Layer L1;
 	L1.numNeuron = numNeuron;
-	L1.Neu = (neuron*)calloc(numNeuron, sizeof(neuron));
+	L1.Neu = (Neuron*)calloc(numNeuron, sizeof(Neuron));
 	return L1;
 }
 
+
 void createNetwork() {
 
-	L = (layer*)calloc(numLayers, sizeof(layer));
+	L = (Layer*)calloc(numLayers, sizeof(Layer));
 
 	// First layer has no input weights
 	L[0] = createLayer(NN_def[0]);
@@ -143,9 +162,9 @@ void createNetwork() {
 
 
 // this function is to calculate dA
-DATA_TYPE dLossCalc( unsigned int layerIndx, unsigned int nodeIndx) {
+float dLossCalc( unsigned int layerIndx, unsigned int nodeIndx) {
 
-	DATA_TYPE Sum = 0;
+	float Sum = 0;
 	// int outputSize = NN_def[numLayers - 1];
 	// for the last layer, we use complex computation
 	if (layerIndx == numLayers - 1) {	
@@ -162,9 +181,10 @@ DATA_TYPE dLossCalc( unsigned int layerIndx, unsigned int nodeIndx) {
 	return Sum;
 }
 
+
 void forwardProp() {
 	
-	DATA_TYPE Fsum = 0;
+	float Fsum = 0;
 	int maxIndx = 0;
 	// Propagating through network
 	for (unsigned int i = 0; i < numLayers; i++) {
@@ -191,7 +211,7 @@ void forwardProp() {
 	}
 
   // performing exp but ensuring we dont exceed 709 or 88 in any terms 
-	DATA_TYPE norm = abs(y[maxIndx]);
+	float norm = abs(y[maxIndx]);
 	if (norm > EXP_LIMIT) {
 #if DEBUG
 		Serial.print("Max limit exceeded for exp:");
@@ -216,6 +236,7 @@ void forwardProp() {
 		y[j] = y[j]/Fsum;
 	}
 }
+
 
 void backwardProp() {
 	for (unsigned int i = numLayers - 1; i > 1; i--) {
@@ -248,6 +269,7 @@ void generateTrainVectors(int indx) {
 
 }
 
+
 void shuffleIndx()
 {
   for (unsigned int i = 0; i < NUM_TRAINING_DATA - 1; i++)
@@ -259,6 +281,7 @@ void shuffleIndx()
   }
 }
 
+
 int calcTotalWeightsBias()
 {
 	int Count = 0;
@@ -268,6 +291,7 @@ int calcTotalWeightsBias()
 
 	return Count;
 }
+
 
 void printAccuracy()
 {
@@ -398,8 +422,9 @@ void packUnpackVector(int Type)
   }
 }
 
+
 // Called from main in setup-function
-void setupNN(DATA_TYPE* wbptr) {
+void setupNN(float* wbptr) {
   WeightBiasPtr = wbptr;
   createNetwork();
 }
