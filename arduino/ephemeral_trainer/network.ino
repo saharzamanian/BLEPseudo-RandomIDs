@@ -74,10 +74,6 @@ void train() {
     forwardProp();
     backwardProp();
   }
-
-  Serial.println("Accuracy after local training:");
-  printAccuracy();
-
 }
 
 
@@ -362,6 +358,7 @@ void printAccuracy()
   Accuracy = correctCount * 1.0 / NUM_TEST_DATA;
   Serial.print("Test Accuracy: ");
   Serial.println(Accuracy);
+  Serial.println("");
 }
 
 

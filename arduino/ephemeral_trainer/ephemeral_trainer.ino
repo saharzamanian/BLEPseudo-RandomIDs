@@ -31,6 +31,7 @@ void loop() {
   bool retrain_requested = readShieldButton();
   
   if (retrain_requested) {        
-    train();    
+    train(); 
+    printAccuracy();   
   }
 }
