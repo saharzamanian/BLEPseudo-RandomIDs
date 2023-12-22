@@ -2,13 +2,12 @@
 #include "data.h"
 
 
-#define fRAND ( rand()*1.0/RAND_MAX-0.5 )*2   // random number generator between -1 and +1 
-#define ACT(a) max(a,0)    // RELU(a)
+inline float fRand() { return (rand() * (1.0/RAND_MAX) - 0.5) * 2; }
 
-#define LEARNING_RATE 0.1
+inline float relu(float a) { return max(a, 0); }
 
-#define EXP_LIMIT 78.0  // limit 88.xx but we need to factor in accumulation for softmax
-#define EXP(a) expl(a)
+const float LEARNING_RATE = 0.1;
+const float EXP_LIMIT = 78.0;  // limit 88.xx but we need to factor in accumulation for softmax
 
 
 extern const size_t NUM_INPUT_DATA_ELEMENTS;
@@ -17,7 +16,6 @@ const size_t NUM_2ND_LAYER_NEURONS = 30;
 const size_t NUM_OUTPUT_NEURONS = 3;
 
 static const unsigned int NN_def[] = {NUM_1ST_LAYER_NEURONS, NUM_2ND_LAYER_NEURONS, NUM_OUTPUT_NEURONS};
-
 size_t numLayers = sizeof(NN_def) / sizeof(NN_def[0]);
 
 // dummy input for testing
@@ -34,19 +32,16 @@ int indxArray[NUM_TRAINING_DATA];
 Layer* L = NULL;
 
 // Weights written to here will be sent/received via bluetooth. 
-float* WeightBiasPtr = NULL;
+float* g_weights_biases_buffer = NULL;
 
 
 void initNN() {
-  int weights_bias_cnt = calcTotalWeightsBias(); 
+  int weights_biases_count = calcTotalWeightsBias(); 
+  Serial.print("The total number of weights and biases used for on-device training: ");
+  Serial.println(weights_biases_count);
 
-  Serial.print("The total number of weights and bias used for on-device training on Arduino: ");
-  Serial.println(weights_bias_cnt);
-
-  // Allocate common weight vector, and pass to setupNN, setupBLE
-  float* WeightBiasPtr = (float*) calloc(weights_bias_cnt, sizeof(float));
-
-  setupNN(WeightBiasPtr);  // CREATES THE NETWORK BASED ON NN_def[]
+  g_weights_biases_buffer = (float*) calloc(weights_biases_count, sizeof(float));
+  createNetwork();
 }
 
 
@@ -77,53 +72,23 @@ void train() {
 }
 
 
-// Equation (8)
-float AccFunction (unsigned int layerIndx, int nodeIndx) {
-	float A = 0;
-
-	for (int k = 0; k < NN_def[layerIndx - 1]; k++) {
-
-	// updating weights/bais and resetting gradient value if non-zero
-	if (L[layerIndx].Neu[nodeIndx].dW[k] != 0.0 ) {
-		L[layerIndx].Neu[nodeIndx].W[k] += L[layerIndx].Neu[nodeIndx].dW[k];
-		L[layerIndx].Neu[nodeIndx].dW[k] = 0.0;
-	}
-
-	A += L[layerIndx].Neu[nodeIndx].W[k] * L[layerIndx - 1].Neu[k].X;
-
-	}
-
-	if (L[layerIndx].Neu[nodeIndx].dB != 0.0 ) {
-		L[layerIndx].Neu[nodeIndx].B += L[layerIndx].Neu[nodeIndx].dB;
-		L[layerIndx].Neu[nodeIndx].dB = 0.0;
-	}
-	A += L[layerIndx].Neu[nodeIndx].B;
-
-	return A;
-}
-
-
 // NEED HANDLING TO ENSURE NO WEIGHTS AND BIAS ARE CREATED FOR FIRST LAYER OR THROW ERROR IF ACCESSED ACCIDENTLY
 // EVEN THOUGH WE HAVENT EXPLICITLY CALLED CREATED THE NEURON FOR FIRST LAYER, HOW WAS L[i].Neu[j].X SUCCESSFUL IN FORWARD PROPAGATION!!
 Neuron createNeuron(int numInput) {
-
 	Neuron N1;
-
-	N1.B = fRAND;
+	N1.B = fRand();
 	N1.numInput = numInput;
 	N1.W = (float*)calloc(numInput, sizeof(float));
 	N1.dW = (float*)calloc(numInput, sizeof(float));
 	// initializing values of W to rand and dW to 0
-	//int Sum = 0;
 	for (int i = 0; i < numInput; i++) {
-		N1.W[i] = fRAND;
+		N1.W[i] = fRand();
 		N1.dW[i] = 0.0;
 	}
 	N1.dA = 0.0;
 	N1.dB = 0.0;
 
 	return N1;
-
 }
 
 
@@ -136,7 +101,6 @@ Layer createLayer (int numNeuron) {
 
 
 void createNetwork() {
-
 	L = (Layer*)calloc(numLayers, sizeof(Layer));
 
 	// First layer has no input weights
@@ -153,13 +117,33 @@ void createNetwork() {
 	for (unsigned int i = 0; i <  NUM_TRAINING_DATA; i ++ ) {
 		indxArray[i] = i;
 	}
+}
 
+
+// Equation (8)
+float AccFunction (unsigned int layerIndx, int nodeIndx) {
+  float accum = 0;
+	for (int k = 0; k < NN_def[layerIndx - 1]; k++) {
+    // updating weights/bais and resetting gradient value if non-zero
+    if (L[layerIndx].Neu[nodeIndx].dW[k] != 0.0 ) {
+      L[layerIndx].Neu[nodeIndx].W[k] += L[layerIndx].Neu[nodeIndx].dW[k];
+      L[layerIndx].Neu[nodeIndx].dW[k] = 0.0;
+    }
+    accum += L[layerIndx].Neu[nodeIndx].W[k] * L[layerIndx - 1].Neu[k].X;
+	}
+
+	if (L[layerIndx].Neu[nodeIndx].dB != 0.0 ) {
+		L[layerIndx].Neu[nodeIndx].B += L[layerIndx].Neu[nodeIndx].dB;
+		L[layerIndx].Neu[nodeIndx].dB = 0.0;
+	}
+	accum += L[layerIndx].Neu[nodeIndx].B;
+
+	return accum;
 }
 
 
 // this function is to calculate dA
 float dLossCalc( unsigned int layerIndx, unsigned int nodeIndx) {
-
 	float Sum = 0;
 	// int outputSize = NN_def[numLayers - 1];
 	// for the last layer, we use complex computation
@@ -179,7 +163,6 @@ float dLossCalc( unsigned int layerIndx, unsigned int nodeIndx) {
 
 
 void forwardProp() {
-	
 	float Fsum = 0;
 	int maxIndx = 0;
 	// Propagating through network
@@ -201,7 +184,7 @@ void forwardProp() {
 		} else {	
 			// for subsequent layers, we need to perform RELU
 			for (unsigned int j = 0; j < NN_def[i];j++) {
-				L[i].Neu[j].X = ACT(AccFunction(i,j));				// Equation (21)	
+				L[i].Neu[j].X = relu(AccFunction(i,j));				// Equation (21)	
 			}	
 		}
 	}
@@ -223,7 +206,7 @@ void forwardProp() {
 	}
 	for (unsigned int j = 0; j < NN_def[numLayers-1];j++) {
 		// int flag = 0;
-		y[j] = EXP(y[j]/norm);
+		y[j] = expl(y[j]/norm);
 		Fsum += y[j];
 	}
 
@@ -252,7 +235,6 @@ void backwardProp() {
 
 // function to set the input and output vectors for training or inference
 void generateTrainVectors(int indx) {
-
 	// Train Data
 	for (unsigned int j = 0; j < NUM_OUTPUT_NEURONS; j++) {
 		hat_y[j] = 0.0;
@@ -262,7 +244,6 @@ void generateTrainVectors(int indx) {
 	for (unsigned int j = 0; j < NUM_1ST_LAYER_NEURONS; j++) {
 		input[j] = train_data[ indxArray[indx] ][j];
 	}
-
 }
 
 
@@ -377,27 +358,25 @@ void packUnpackVector(int Type)
     for (unsigned int i = 1; i < numLayers; i++) {
       for (unsigned int j = 0; j < NN_def[i]; j++) {
         for (unsigned int k = 0; k < L[i].Neu[j].numInput; k++) {
-          WeightBiasPtr[ptrCount] = L[i].Neu[j].W[k];
+          g_weights_biases_buffer[ptrCount] = L[i].Neu[j].W[k];
           ptrCount += 1;
         }
-        WeightBiasPtr[ptrCount] = L[i].Neu[j].B;
+        g_weights_biases_buffer[ptrCount] = L[i].Neu[j].B;
         ptrCount += 1;
       }
     }
-
     //Serial.print("Total count when packing:");
     //Serial.println(ptrCount);
-
   } else if (Type == UNPACK) {
     // Propagating through network, we store all weights first and then bias.
     // we start with left most layer, and top most node or lowest to highest index
     for (unsigned int i = 1; i < numLayers; i++) {
       for (unsigned int j = 0; j < NN_def[i]; j++) {
         for (unsigned int k = 0; k < L[i].Neu[j].numInput; k++) {
-          L[i].Neu[j].W[k] = WeightBiasPtr[ptrCount];
+          L[i].Neu[j].W[k] = g_weights_biases_buffer[ptrCount];
           ptrCount += 1;
         }
-        L[i].Neu[j].B = WeightBiasPtr[ptrCount];
+        L[i].Neu[j].B = g_weights_biases_buffer[ptrCount];
         ptrCount += 1;
       }
     }
@@ -407,21 +386,14 @@ void packUnpackVector(int Type)
     for (unsigned int i = 1; i < numLayers; i++) {
       for (unsigned int j = 0; j < NN_def[i]; j++) {
         for (unsigned int k = 0; k < L[i].Neu[j].numInput; k++) {
-          L[i].Neu[j].W[k] = (WeightBiasPtr[ptrCount] + L[i].Neu[j].W[k] ) / 2;
-          WeightBiasPtr[ptrCount] = L[i].Neu[j].W[k];
+          L[i].Neu[j].W[k] = (g_weights_biases_buffer[ptrCount] + L[i].Neu[j].W[k] ) / 2;
+          g_weights_biases_buffer[ptrCount] = L[i].Neu[j].W[k];
           ptrCount += 1;
         }
-        L[i].Neu[j].B = (WeightBiasPtr[ptrCount] + L[i].Neu[j].B ) / 2;
-        WeightBiasPtr[ptrCount] = L[i].Neu[j].B;
+        L[i].Neu[j].B = (g_weights_biases_buffer[ptrCount] + L[i].Neu[j].B ) / 2;
+        g_weights_biases_buffer[ptrCount] = L[i].Neu[j].B;
         ptrCount += 1;
       }
     }
   }
-}
-
-
-// Called from main in setup-function
-void setupNN(float* wbptr) {
-  WeightBiasPtr = wbptr;
-  createNetwork();
 }
