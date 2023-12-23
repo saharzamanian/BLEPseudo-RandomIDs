@@ -3,7 +3,7 @@
 
 
 struct Neuron {
-	int numInput;
+	int numInputs;
 	float* W;
 	float B;
 	float X;
@@ -14,8 +14,8 @@ struct Neuron {
 };
 
 struct Layer {
-	int numNeuron;
-	Neuron* Neu;
+	int numNeurons;
+	Neuron* neuron;
 };
 
 
