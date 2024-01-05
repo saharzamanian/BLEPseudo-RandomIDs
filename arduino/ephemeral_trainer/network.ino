@@ -1,5 +1,5 @@
 #include "network.h"
-#include "data.h"
+#include "ephemeral_data.h"
 
 
 const float LEARNING_RATE = 0.1;
@@ -9,12 +9,13 @@ const float EXP_LIMIT = 78.0;  // limit 88.xx but we need to factor in accumulat
 extern const size_t NUM_INPUT_DATA_ELEMENTS;
 const size_t NUM_1ST_LAYER_NEURONS = NUM_INPUT_DATA_ELEMENTS;
 const size_t NUM_2ND_LAYER_NEURONS = 30;
-const size_t NUM_OUTPUT_NEURONS = 3;
+const size_t NUM_OUTPUT_NEURONS = 4;
 
 static const unsigned int NUM_LAYER_NEURONS[] = {NUM_1ST_LAYER_NEURONS, NUM_2ND_LAYER_NEURONS, NUM_OUTPUT_NEURONS};
 static const size_t NUM_LAYERS = sizeof(NUM_LAYER_NEURONS) / sizeof(NUM_LAYER_NEURONS[0]);
 
 
+static byte sha256Bytes[NUM_1ST_LAYER_NEURONS+1];
 static float input[NUM_1ST_LAYER_NEURONS];
 static float hat_y[NUM_OUTPUT_NEURONS];    // target output
 static float y[NUM_OUTPUT_NEURONS];        // output after forward propagation
@@ -219,15 +220,23 @@ void backwardPropagation() {
 }
 
 
+void sha256BytesToFloatArray() {
+    char hex_num[2] = {0, 0};
+    for (int i = 0; i < NUM_1ST_LAYER_NEURONS; ++i) {
+        hex_num[0] = sha256Bytes[i];
+        input[i] = strtol(hex_num, 0, 16);
+    }
+}
+
+
 void generateTrainVectors(int indx) {
 	for (unsigned int j = 0; j < NUM_OUTPUT_NEURONS; j++) {
 		hat_y[j] = 0.0;
 	}
 	hat_y[ train_labels[inputShuffler[indx]] ] = 1.0;
-
-	for (unsigned int j = 0; j < NUM_1ST_LAYER_NEURONS; j++) {
-		input[j] = train_data[ inputShuffler[indx] ][j];
-	}
+  
+  train_data[inputShuffler[indx]].getBytes(sha256Bytes, NUM_1ST_LAYER_NEURONS+1);
+	sha256BytesToFloatArray();
 }
 
 
@@ -258,9 +267,9 @@ void printAccuracy()
 
   for (unsigned int i = 0; i < NUM_TRAINING_DATA; i++) {
     int maxIndx = 0;
-    for (unsigned int j = 0; j < NUM_1ST_LAYER_NEURONS; j++) {
-      input[j] = train_data[i][j];
-    }
+   
+    train_data[i].getBytes(sha256Bytes, NUM_1ST_LAYER_NEURONS+1);
+	  sha256BytesToFloatArray();
 
     forwardPropagation();
     for (unsigned int j = 1; j < NUM_OUTPUT_NEURONS; j++) {
@@ -280,9 +289,9 @@ void printAccuracy()
   correctCount = 0;
   for (unsigned int i = 0; i < NUM_VALIDATION_DATA; i++) {
     int maxIndx = 0;
-    for (unsigned int j = 0; j < NUM_1ST_LAYER_NEURONS; j++) {
-      input[j] = validation_data[i][j];
-    }
+    
+    validation_data[i].getBytes(sha256Bytes, NUM_1ST_LAYER_NEURONS+1);
+	  sha256BytesToFloatArray();
 
     forwardPropagation();
     for (unsigned int j = 1; j < NUM_OUTPUT_NEURONS; j++) {
@@ -302,9 +311,9 @@ void printAccuracy()
   correctCount = 0;
   for (unsigned int i = 0; i < NUM_TEST_DATA; i++) {
     int maxIndx = 0;
-    for (unsigned int j = 0; j < NUM_1ST_LAYER_NEURONS; j++) {
-      input[j] = test_data[i][j];
-    }
+
+    test_data[i].getBytes(sha256Bytes, NUM_1ST_LAYER_NEURONS+1);
+	  sha256BytesToFloatArray();
 
     forwardPropagation();
     for (unsigned int j = 1; j < NUM_OUTPUT_NEURONS; j++) {
