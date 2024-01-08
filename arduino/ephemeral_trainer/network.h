@@ -25,5 +25,6 @@ void train();
 
 void printAccuracy();
 
+void predict(String ephemeralData, int label);
 
 #endif

@@ -333,6 +333,30 @@ void printAccuracy()
 }
 
 
+void predict(String ephemeralData, int label)
+{
+  int maxIndx = 0;
+
+  ephemeralData.getBytes(sha256Bytes, NUM_1ST_LAYER_NEURONS+1);
+  sha256BytesToFloatArray();
+
+  forwardPropagation();
+  
+  for (unsigned int j = 1; j < NUM_OUTPUT_NEURONS; j++) {
+    if (y[maxIndx] < y[j]) {
+      maxIndx = j;
+    }
+  }
+
+  Serial.print("Actual: ");
+  Serial.print(label);
+  Serial.println("");
+  Serial.print("Prediction: ");
+  Serial.println(maxIndx);
+  Serial.println("");
+}
+
+
 #define PACK 0
 #define UNPACK 1
 #define AVERAGE 2
