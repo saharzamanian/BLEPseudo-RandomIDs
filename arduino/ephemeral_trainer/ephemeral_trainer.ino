@@ -48,15 +48,15 @@ void setup() {
 
 
 void loop() {
-  bool justPredict = true;
-  static unsigned int testIndex = 0;
+  bool performPrediction = true;
+  static unsigned int incomingItem = 0;
   
-  bool retrain_requested = readShieldButton();
+  bool trigger = readShieldButton();
   
-  if (retrain_requested) {  
-    if (justPredict) {
-      predict(incoming_data[testIndex], incoming_labels[testIndex]);
-      ++testIndex;
+  if (trigger) {  
+    if (performPrediction) {
+      predict(incoming_data[incomingItem], incoming_labels[incomingItem]);
+      ++incomingItem;
     }      
     else {
       train(); 
